@@ -50,10 +50,12 @@ A web interface for Aurora Statspack reports.
 To test the application locally, follow these steps:
 
 ### 1. Clone the repository:
-```bash
+
+```
 git clone https://github.com/yourusername/aurora-statspack-ui.git
 cd aurora-statspack-ui
 ```
+
 2. Set up a Python virtual environment:
 bash
 Copy code
