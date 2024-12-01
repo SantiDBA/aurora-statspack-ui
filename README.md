@@ -84,19 +84,18 @@ http://localhost:5000
 To deploy the application using Docker, follow these steps:
 
 1. Clone the repository:
-bash
-Copy code
+
 git clone https://github.com/yourusername/aurora-statspack-ui.git
 cd aurora-statspack-ui
+
 2. Build the Docker image:
-bash
-Copy code
+
 docker build -t statspack_app .
+
 3. Run the Docker container:
+
 Ensure to replace the environment variables with your actual database connection details.
 
-bash
-Copy code
 docker run --rm -it \
   -e DB_HOST="your_hostname" \
   -e DB_PORT="your_port" \
