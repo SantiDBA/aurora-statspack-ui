@@ -25,7 +25,7 @@ order by snap_id asc;
 \pset border 0
 \pset tuples_only
 \qecho <h1>Aurora PostgreSQL Statspack report - Created by Santiago Villa</h1>
-SELECT 'Statspack v2.0 report generated from '||server_id||' server at ',now() at time zone 'America/New_York' FROM aurora_global_db_instance_status() where session_id='MASTER_SESSION_ID';
+SELECT 'Statspack v2.0 report generated from '||inet_server_addr()||' server at ',now() at time zone 'America/New_York';
 \pset tuples_only off
 
 \pset border 0
@@ -99,7 +99,7 @@ select ' ' as T;
 
 \pset tuples_only
 \qecho <h2>ACTIVE SESSIONS</h2>
-SELECT '( DBLOAD = '||count(*)||' )' from statspack.hist_active_sessions_waits where snap_id = :END_SNAP and current_wait_type = wait_type and current_wait_event = wait_event;
+SELECT '( DBLOAD = '||count(*)||' )' from statspack.hist_active_sessions_waits where snap_id = :END_SNAP;
 \pset tuples_only off
 \pset border 1
 
@@ -110,13 +110,10 @@ select
         last_snap.current_wait_type,
         last_snap.current_wait_event,
         last_snap.current_state,
-        last_snap.waits-coalesce(first_snap.waits,0) as waits,
-        round((last_snap.wait_time-coalesce(first_snap.wait_time,0))/1000000,2) as wait_time_seconds,
         last_snap.backend_start at time zone 'America/New_York' as backend_start,
         last_snap.xact_start at time zone 'America/New_York' as xact_start,
         last_snap.query_start at time zone 'America/New_York' as query_start,
         last_snap.state_change at time zone 'America/New_York' as state_change,
-        last_snap.query_id,
         substr(last_snap.query,1,80) as partial_query
 from
         (
@@ -134,55 +131,9 @@ left join
                 statspack.hist_active_sessions_waits
         where
                 snap_id = :BEGIN_SNAP) first_snap
-
 on
         last_snap.pid = first_snap.pid
-        and last_snap.usename = first_snap.usename
-        and last_snap.app_name = first_snap.app_name
-        and last_snap.wait_type = first_snap.wait_type
-        and last_snap.wait_event = first_snap.wait_event
-where last_snap.current_wait_type = last_snap.wait_type and last_snap.current_wait_event = last_snap.wait_event
-order by
-        (last_snap.wait_time-coalesce(first_snap.wait_time,0)) desc nulls last;
-
-\pset border 0
-\pset tuples_only
-select ' ' as T;
-\pset tuples_only off
-
-\pset tuples_only
-\qecho <h2>TOP 10 SYSTEM WAIT EVENTS</h2>
-\pset tuples_only off
-\pset border 1
-
-select
-        last_snap.type_name,
-        last_snap.event_name,
-        last_snap.waits-first_snap.waits as waits,
-        round((last_snap.wait_time-coalesce(first_snap.wait_time,0))/1000000,2) as wait_time_seconds,
-        round((last_snap.wait_time-coalesce(first_snap.wait_time,0))/1000000/60,2) as wait_time_minutes
-from
-        (
-        select
-                *
-        from
-                statspack.hist_stat_system_waits
-        where
-                snap_id = :END_SNAP ) last_snap
-left join
-(
-        select
-                *
-        from
-                statspack.hist_stat_system_waits
-        where
-                snap_id = :BEGIN_SNAP ) first_snap
-on
-        last_snap.type_name = first_snap.type_name
-        and last_snap.event_name = first_snap.event_name
-order by
-        last_snap.wait_time-coalesce(first_snap.wait_time,0) desc nulls last
-limit 10;
+        and last_snap.app_name = first_snap.app_name;
 
 \pset border 0
 \pset tuples_only
@@ -234,7 +185,6 @@ on
         last_snap.userid = first_snap.userid
         and last_snap.dbid = first_snap.dbid
         and last_snap.queryid = first_snap.queryid
-        and last_snap.toplevel = first_snap.toplevel
 order by
         (last_snap.total_exec_time-coalesce(first_snap.total_exec_time,0)) desc nulls last
 limit 10;
@@ -295,7 +245,6 @@ on
         last_snap.userid = first_snap.userid
         and last_snap.dbid = first_snap.dbid
         and last_snap.queryid = first_snap.queryid
-        and last_snap.toplevel = first_snap.toplevel
 order by
         time_by_call_secs desc nulls last,
         (last_snap.calls-coalesce(first_snap.calls,0)) desc nulls last
@@ -359,7 +308,6 @@ on
         last_snap.userid = first_snap.userid
         and last_snap.dbid = first_snap.dbid
         and last_snap.queryid = first_snap.queryid
-        and last_snap.toplevel = first_snap.toplevel
 order by
         case
                 when last_snap.calls-coalesce(first_snap.calls, 0) > 0 then ((last_snap.shared_blks_read + last_snap.shared_blks_written-coalesce(first_snap.shared_blks_read,0) - coalesce(first_snap.shared_blks_written,0))::numeric
@@ -419,7 +367,6 @@ on
         last_snap.userid = first_snap.userid
         and last_snap.dbid = first_snap.dbid
         and last_snap.queryid = first_snap.queryid
-        and last_snap.toplevel = first_snap.toplevel
 order by
         io_blks desc nulls last
 limit 10;
@@ -580,220 +527,6 @@ where
 order by
         idx_scan asc, index_size desc
 LIMIT 10;
-
-\pset border 0
-\pset tuples_only
-select ' ' as T;
-\pset tuples_only off
-
-\pset tuples_only
-\qecho <h2>HEAVY QUERIES - FULL TEXT AND EXPLAIN PLANS</h2>
-\pset tuples_only off
-\pset border 1
-
-select
-	full_stmts.queryid,
-	full_stmts.usename,
-	hdp.sql_hash ,
-	hdp.plan_hash ,
-	hdp.enabled ,
-	hdp.status ,
-	round(hdp.estimated_total_cost,0) as estimated_total_cost,
-	hdp.last_used ,
-	hdp.explain_plan,
-	coalesce(hdp.sql_text,full_stmts.query) full_query
-from
-	(
-	(
-	select
-		last_snap.queryid,
-		pu.usename ,
-		last_snap.snap_id,
-                last_snap.query
-	from
-		(
-		select
-			*
-		from
-			statspack.hist_pg_stat_statements
-		where
-			snap_id = :END_SNAP ) last_snap
-	join statspack.hist_pg_users pu on
-		last_snap.userid = pu.usesysid
-		and pu.snap_id = last_snap.snap_id
-	left join
-(
-		select
-			*
-		from
-			statspack.hist_pg_stat_statements
-		where
-			snap_id = :BEGIN_SNAP ) first_snap
-on
-		last_snap.userid = first_snap.userid
-		and last_snap.dbid = first_snap.dbid
-		and last_snap.queryid = first_snap.queryid
-                and last_snap.toplevel = first_snap.toplevel
-	order by
-		(last_snap.total_exec_time-coalesce(first_snap.total_exec_time,
-		0)) desc nulls last
-	limit 10)
-union 
-	(
-select
-	last_snap.queryid,
-	pu.usename ,
-	last_snap.snap_id,
-        last_snap.query
-from
-	(
-	select
-		*
-	from
-		statspack.hist_pg_stat_statements
-	where
-		snap_id = :END_SNAP ) last_snap
-join statspack.hist_pg_users pu on
-	last_snap.userid = pu.usesysid
-	and pu.snap_id = last_snap.snap_id
-left join
-(
-	select
-		*
-	from
-		statspack.hist_pg_stat_statements
-	where
-		snap_id = :BEGIN_SNAP ) first_snap
-on
-	last_snap.userid = first_snap.userid
-	and last_snap.dbid = first_snap.dbid
-	and last_snap.queryid = first_snap.queryid
-        and last_snap.toplevel = first_snap.toplevel
-order by
-	case
-		when last_snap.calls-coalesce(first_snap.calls,
-		0) > 0 then round((((last_snap.total_exec_time-coalesce(first_snap.total_exec_time,
-		0))/ 1000)/(last_snap.calls-coalesce(first_snap.calls,
-		0)))::numeric,
-		1)
-		else 0
-	end desc nulls last,
-	(last_snap.calls-COALESCE(first_snap.calls,0)) desc nulls last
-limit 10)
-union 
-	(
-select
-	last_snap.queryid,
-	pu.usename ,
-	last_snap.snap_id,
-        last_snap.query
-from
-	(
-select
-		*
-from
-		statspack.hist_pg_stat_statements
-where
-		snap_id = :END_SNAP ) last_snap
-join statspack.hist_pg_users pu on
-	last_snap.userid = pu.usesysid
-and pu.snap_id = last_snap.snap_id
-left join
-(
-select
-		*
-from
-		statspack.hist_pg_stat_statements
-where
-		snap_id = :BEGIN_SNAP ) first_snap
-on
-	last_snap.userid = first_snap.userid
-and last_snap.dbid = first_snap.dbid
-and last_snap.queryid = first_snap.queryid
-and last_snap.toplevel = first_snap.toplevel
-order by
-                case
-	when last_snap.calls-coalesce(first_snap.calls,
-	0) > 0 then round(((last_snap.shared_blks_read + last_snap.shared_blks_written-coalesce(first_snap.shared_blks_read,0)-coalesce(first_snap.shared_blks_written,0))
-                /(last_snap.calls-coalesce(first_snap.calls,
-	0)))::numeric,
-	1)
-	else 0
-end desc nulls last
-limit 10)
-union 
-	(
-select
-	last_snap.queryid,
-	pu.usename ,
-	last_snap.snap_id,
-        last_snap.query
-from
-	(
-select
-		*
-from
-		statspack.hist_pg_stat_statements
-where
-		snap_id = :END_SNAP ) last_snap
-join statspack.hist_pg_users pu on
-	last_snap.userid = pu.usesysid
-and pu.snap_id = last_snap.snap_id
-left join
-(
-select
-		*
-from
-		statspack.hist_pg_stat_statements
-where
-		snap_id = :BEGIN_SNAP ) first_snap
-on
-	last_snap.userid = first_snap.userid
-and last_snap.dbid = first_snap.dbid
-and last_snap.queryid = first_snap.queryid
-and last_snap.toplevel = first_snap.toplevel
-order by
-                (last_snap.shared_blks_read + last_snap.shared_blks_written - coalesce(first_snap.shared_blks_read,
-0) - coalesce(first_snap.shared_blks_written,
-0)) desc nulls last
-limit 10)
-union
-(SELECT query_id as queryid,
-	usename ,
-	snap_id,
-        query
-        from statspack.hist_active_sessions_waits where snap_id = :END_SNAP and current_wait_type = wait_type and current_wait_event = wait_event
-)
-union 
-	(
-select
-	last_snap.queryid,
-	pu.usename ,
-	last_snap.snap_id,
-        last_snap.query
-from
-	(
-select
-		*
-from
-		statspack.hist_pg_stat_statements
-where
-		snap_id = :END_SNAP ) last_snap
-join statspack.hist_pg_users pu on last_snap.userid = pu.usesysid and pu.snap_id = last_snap.snap_id
-WHERE calls > 100 AND shared_blks_hit > 0
-order by (stddev_exec_time/mean_exec_time) desc nulls last
-limit 10)
-         ) full_stmts
-left join statspack.hist_dba_plans hdp
-on
-	full_stmts.queryid = hdp.queryid
-	and full_stmts.snap_id = hdp.snap_id
-	and full_stmts.usename = hdp.created_by
-order by
-	full_stmts.queryid ,
-	hdp.sql_hash ,
-	hdp.last_used,
-	hdp.estimated_total_cost ;
 
 \pset border 0
 \pset tuples_only

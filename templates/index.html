@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Snapshots</title>
+</head>
+<body>
+    <h1>Select Snapshots for the Report</h1>
+    <form method="POST">
+        <label for="begin_snap">Begin Snapshot:</label>
+        <select name="begin_snap" id="begin_snap" required>
+            {% for snap_id, snapshot_time in snapshots %}
+                <option value="{{ snap_id }}">{{ snap_id }} - {{ snap_timestamp }}</option>
+            {% endfor %}
+        </select>
+        <br><br>
+        <label for="end_snap">End Snapshot:</label>
+        <select name="end_snap" id="end_snap" required>
+            {% for snap_id, snapshot_time in snapshots %}
+                <option value="{{ snap_id }}">{{ snap_id }} - {{ snap_timestamp }}</option>
+            {% endfor %}
+        </select>
+        <br><br>
+        <button type="submit">Generate Report</button>
+    </form>
+</body>
+</html>
