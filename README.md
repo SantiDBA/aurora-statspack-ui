@@ -53,6 +53,7 @@ To test the application locally, follow these steps:
 ```bash
 git clone https://github.com/yourusername/aurora-statspack-ui.git
 cd aurora-statspack-ui
+```
 2. Set up a Python virtual environment:
 bash
 Copy code
@@ -65,8 +66,6 @@ pip install -r requirements.txt
 4. Configure your database connection:
 Set the following environment variables with your database connection details:
 
-bash
-Copy code
 export DB_HOST="your_hostname"
 export DB_PORT="your_port"
 export DB_USER="your_user"
