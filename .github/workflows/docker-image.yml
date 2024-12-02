@@ -18,12 +18,7 @@ jobs:
     - name: Log in to Docker Hub
       run: echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
 
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag airsantix/aurora-statspack-ui:latest
-      
-    - name: Push the Docker image
+    - name: Build and push the Docker image
       run: |
-        IMAGE_TAG=airsantix/aurora-statspack-ui:latest
-        docker tag $IMAGE_TAG airsantix/aurora-statspack-ui:latest
-        docker push $IMAGE_TAG
+        docker build . --file Dockerfile --tag $IMAGE_TAG
         docker push airsantix/aurora-statspack-ui:latest
