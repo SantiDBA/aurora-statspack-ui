@@ -16,9 +16,15 @@ cd aurora-statspack-ui
 
 2. Set up a Python virtual environment:
 
+- On Mac:
 ```
 python3 -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
+source venv/bin/activate  
+```
+
+- On Windows:
+```
+venv\Scripts\activate
 ```
 
 3. Install the required dependencies:
