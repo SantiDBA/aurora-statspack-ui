@@ -62,7 +62,7 @@ To deploy the application using Docker, follow these steps:
 Ensure to replace the environment variables with your actual database connection details.
 
 ```
-docker run --rm -it \
+docker run --pull always --rm -it \
   -e DB_HOST="your_hostname" \
   -e DB_PORT="your_port" \
   -e DB_USER="your_user" \
