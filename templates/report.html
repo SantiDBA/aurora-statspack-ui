@@ -3,33 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Statspack Report</title>
-    {{ style|safe }}
+    <title>Postgres Performance Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        form {
+            margin-bottom: 20px;
+        }
+        .no-data {
+            color: #777;
+            font-style: italic;
+        }
+    </style>
 </head>
 <body>
-    <h1>Statspack Report</h1>
+    <h1>Postgres Performance Report</h1>
 
-    {% for result in all_results %}
-        <h2>Query {{ loop.index }}</h2>
+    <form method="POST">
+        <label for="begin_snap">Begin Snapshot:</label>
+        <select name="begin_snap" id="begin_snap" required>
+            <option value="">-- Select --</option>
+            {% for snap_id, start_time in snapshots %}
+            <option value="{{ snap_id }}" {% if snap_id == begin_snap %}selected{% endif %}>
+                {{ snap_id }} - {{ start_time }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <label for="end_snap">End Snapshot:</label>
+        <select name="end_snap" id="end_snap" required>
+            <option value="">-- Select --</option>
+            {% for snap_id, start_time in snapshots %}
+            <option value="{{ snap_id }}" {% if snap_id == end_snap %}selected{% endif %}>
+                {{ snap_id }} - {{ start_time }}
+            </option>
+            {% endfor %}
+        </select>
+
+        <button type="submit">Generate Report</button>
+    </form>
+
+    {% if queries %}
+        {% for query_name, query_result in queries.items() %}
+        <h2>{{ query_name }}</h2>
         <table>
             <thead>
                 <tr>
-                    {% for column in result.columns %}
-                        <th>{{ column }}</th>
+                    {% for column in query_result.columns %}
+                    <th>{{ column }}</th>
                     {% endfor %}
                 </tr>
             </thead>
             <tbody>
-                {% for row in result.rows %}
-                    <tr>
-                        {% for cell in row %}
-                            <td>{{ cell }}</td>
-                        {% endfor %}
-                    </tr>
+                {% for row in query_result.rows %}
+                <tr>
+                    {% for cell in row %}
+                    <td>{{ cell }}</td>
+                    {% endfor %}
+                </tr>
                 {% endfor %}
             </tbody>
         </table>
-        <br>
-    {% endfor %}
+        {% endfor %}
+    {% else %}
+        {% if request.method == 'POST' %}
+            <p class="no-data">No data available for the selected snapshots.</p>
+        {% else %}
+            <p class="no-data">Please select snapshots and generate the report.</p>
+        {% endif %}
+    {% endif %}
 </body>
 </html>

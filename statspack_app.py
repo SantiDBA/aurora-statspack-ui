@@ -1,7 +1,7 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request
 import psycopg2
 import os
-import re
+import logging
 
 app = Flask(__name__)
 
@@ -12,144 +12,102 @@ DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
 DB_NAME = os.getenv("DB_NAME", "postgres")
 
-# SQL script path
-SQL_SCRIPT_PATH = "statspack_report_2_0.sql"
+# Query folder path
+QUERY_FOLDER = "queries"
 
-# HTML Table styling
-HTML_STYLE = """
-    <style>
-        table {
-            width: 80%;
-            margin: 20px auto;
-            border-collapse: collapse;
-        }
-        th, td {
-            padding: 12px;
-            text-align: center;
-            border: 1px solid #ddd;
-        }
-        th {
-            background-color: #4CAF50;
-            color: white;
-        }
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
-        tr:nth-child(odd) {
-            background-color: #e9f7df;
-        }
-        tr:hover {
-            background-color: #ddd;
-        }
-    </style>
-"""
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 
-# Function to fetch snapshot IDs
-def fetch_snapshots():
+def get_db_connection():
+    """Establish and return a database connection."""
+    return psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        dbname=DB_NAME
+    )
+
+def load_queries(folder):
+    queries = {}
+    for filename in sorted(os.listdir(folder)):
+        if filename.endswith('.sql'):
+            query_name = os.path.splitext(filename)[0]
+            # Ensure proper handling of filenames with or without underscores.
+            title = ' '.join(word.capitalize() for word in query_name.split('_'))
+            with open(os.path.join(folder, filename), 'r') as file:
+                queries[query_name] = {'title': title, 'sql': file.read()}
+    return queries
+
+def execute_query(query, params=None):
+    """Execute a query with optional parameters and return its result."""
+    conn = get_db_connection()
     try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            dbname=DB_NAME
-        )
-        cursor = conn.cursor()
-        cursor.execute("SELECT snap_id, snap_timestamp FROM statspack.hist_snapshots ORDER BY snap_id DESC;")
-        snapshots = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return snapshots
-    except Exception as e:
-        print(f"Error fetching snapshots: {e}")
-        return []
-
-# Function to execute SQL queries and handle multiple results
-def execute_sql_query(begin_snap, end_snap):
-    try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            dbname=DB_NAME
-        )
-        cursor = conn.cursor()
-
-        # Read and preprocess the SQL script
-        with open(SQL_SCRIPT_PATH, "r") as sql_file:
-            sql_script = sql_file.read()
-
-        # Remove PostgreSQL meta-commands (lines starting with '\')
-        sql_script = "\n".join(
-            line for line in sql_script.splitlines() if not line.strip().startswith("\\")
-        )
-
-        # Substitute variables with actual values
-        sql_script = re.sub(r":BEGIN_SNAP", str(begin_snap), sql_script)
-        sql_script = re.sub(r":END_SNAP", str(end_snap), sql_script)
-
-        # Split the SQL script into individual queries
-        queries = [q.strip() for q in sql_script.split(";") if q.strip()]
-
-        all_results = []
-        for query in queries:
-            cursor.execute(query)
-            if cursor.description:  # Fetch results only for SELECT queries
-                columns = [desc[0] for desc in cursor.description]
-                rows = cursor.fetchall()
-                all_results.append({"columns": columns, "rows": rows})
-
-        cursor.close()
+        with conn.cursor() as cursor:
+            cursor.execute(query, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+            return columns, rows
+    finally:
         conn.close()
 
-        return all_results
-    except Exception as e:
-        print(f"Error executing SQL queries: {e}")
-        return None
-
-
-# Route to display the snapshot selection form
-@app.route("/", methods=["GET", "POST"])
-def index():
-    if request.method == "POST":
-        begin_snap = request.form.get("begin_snap")
-        end_snap = request.form.get("end_snap")
-        return redirect(url_for("report", begin_snap=begin_snap, end_snap=end_snap))
     
-    snapshots = fetch_snapshots()
-    return render_template("index.html", snapshots=snapshots)
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    """Render the main page with performance metrics."""
+    logging.info("Rendering the index page...")
 
-# Route to display the report
-@app.route("/report", methods=["GET", "POST"])
-def report():
+    # Load available snapshots
+    snapshots_query = """
+        SELECT snap_id, snap_timestamp 
+        FROM statspack.hist_snapshots 
+        ORDER BY snap_id;
+    """
+    conn = get_db_connection()
     try:
-        # Fetching the parameters from the GET or POST request
-        begin_snap = request.args.get("begin_snap") or request.form.get("begin_snap")
-        end_snap = request.args.get("end_snap") or request.form.get("end_snap")
-
-        # Validate input parameters
-        if not begin_snap or not end_snap:
-            return render_template("error.html", message="Both BEGIN_SNAP and END_SNAP must be provided.")
-
-        # Convert to integers to ensure valid input
-        try:
-            begin_snap = int(begin_snap)
-            end_snap = int(end_snap)
-        except ValueError:
-            return render_template("error.html", message="BEGIN_SNAP and END_SNAP must be valid integers.")
-
-        # Call the function with the required arguments
-        all_results = execute_sql_query(begin_snap, end_snap)
-        if not all_results:
-            return render_template("error.html", message="No data available to display.")
-
-        # Pass the results to the HTML template
-        return render_template("report.html", all_results=all_results, style=HTML_STYLE)
+        with conn.cursor() as cursor:
+            cursor.execute(snapshots_query)
+            snapshots = cursor.fetchall()
+        logging.info(f"Snapshots loaded: {snapshots}")
     except Exception as e:
-        print(f"Error: {e}")
-        return render_template("error.html", message="An unexpected error occurred. Check the logs for details.")
+        logging.error(f"Error fetching snapshots: {e}")
+        snapshots = []
+    finally:
+        conn.close()
 
+    # Handle snapshot selection
+    begin_snap = request.form.get('begin_snap')
+    end_snap = request.form.get('end_snap')
+    logging.info(f"Selected snapshots - Begin: {begin_snap}, End: {end_snap}")
+
+    # Load queries and execute them with snapshot parameters
+    queries = load_queries(QUERY_FOLDER)  # Adjusted loader to return dict with title & sql
+    query_results = {}
+
+    if request.method == 'POST' and begin_snap and end_snap:
+        try:
+            for query_name, query_data in queries.items():
+                query_title = query_data['title']
+                query_sql = query_data['sql']
+                logging.info(f"Executing query: {query_name}")
+                columns, rows = execute_query(query_sql, params={'begin_snap': begin_snap, 'end_snap': end_snap})
+                query_results[query_name] = {"title": query_title, "columns": columns, "rows": rows}
+                logging.info(f"Query result for {query_name}: {len(rows)} rows")
+        except Exception as e:
+            logging.error(f"Error executing queries: {e}")
+    # Pass selected snapshots to the template for display.
+    return render_template(
+            'report.html',
+            selected_snapshots={
+                'begin_snap': begin_snap,
+                'end_snap': end_snap,
+            },
+
+            snapshots=snapshots,
+            queries=query_results,
+            begin_snap=begin_snap,
+            end_snap=end_snap
+        )
 
 if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=True)
