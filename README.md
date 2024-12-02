@@ -70,7 +70,7 @@ docker run --rm -it \
   -e DB_NAME="your_dbname" \
   -v $(pwd)/logs:/app/logs \
   -p 5000:5000 \
-  airsantix/aurora-statspack-ui:latest python3 /app/statspack_app.py
+  airsantix/aurora-statspack-ui:latest
 ```
 
 You can now access the Statspack Report at: http://localhost:5000
